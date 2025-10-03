@@ -1,0 +1,18 @@
+services:
+  companion:
+    image: "ghcr.io/roguenand/companion:latest"
+    container_name: fcav-companion
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ~/.fcav/companion:/companion
+
+  indirector:
+    build: ./src
+    container_name: fcav-indirector
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./src:/indirector  # mount local source for dev
+    environment:
+      - PYTHONUNBUFFERED=1
