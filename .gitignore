@@ -1,7 +1,4 @@
 # Project files
-/datastore/companion
-/datastore/editor
-/datastore/tailscale
 /.idea
 
 # Byte-compiled / optimized / DLL files

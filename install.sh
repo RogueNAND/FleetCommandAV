@@ -42,6 +42,7 @@ have()   { command -v "$1" >/dev/null 2>&1; }
 # ---- Steps -------------------------------------------------------------------
 
 install_docker() {
+  # Installing as root since this installation is considered an appliance
   if ! have docker || ! docker version >/dev/null 2>&1; then
     msg "Installing Docker..."
 
@@ -49,16 +50,15 @@ install_docker() {
     sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
     sudo chmod a+r /etc/apt/keyrings/docker.asc
 
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu \
-$(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
-    sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+    echo \
+      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] \
+      https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
+      sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
     sudo apt-get update -y
     sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-    # Add current user to docker group (effective next login)
-    sudo usermod -aG docker "$USER" || true
-    msg "Docker installed. Log out/in for 'docker' group to apply."
+    msg "Docker installed successfully."
   else
     msg "Docker already installed."
   fi
@@ -73,9 +73,9 @@ deploy() {
 
   msg "Starting services..."
 
-  docker compose down --remove-orphans || true
-  docker compose pull
-  docker compose up -d --build
+  sudo docker compose down --remove-orphans || true
+  sudo docker compose pull
+  sudo docker compose up -d --build
 }
 
 check_tailscale() {
@@ -89,13 +89,13 @@ check_tailscale() {
   sleep 2
 
   # Is container running?
-  if ! docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+  if ! sudo docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
     echo -e "\e[33mTailscale container not running; skipping setup.\e[0m"
     return
   fi
 
   # Check if already logged in
-  if docker exec "$container" tailscale status 2>&1 | grep -q "Logged in as"; then
+  if sudo docker exec "$container" tailscale status 2>&1 | grep -q "Logged in as"; then
 #    echo -e "\e[32mTailscale already logged in.\e[0m"
     return
   fi
@@ -103,7 +103,7 @@ check_tailscale() {
   echo -e "\e[34mInitializing Tailscale...\e[0m"
   # Run tailscale up and capture output
   local output
-  output=$(docker exec "$container" tailscale up 2>&1 || true)
+  output=$(sudo docker exec "$container" tailscale up 2>&1 || true)
 
   if echo "$output" | grep -q "https://login.tailscale.com"; then
     local url

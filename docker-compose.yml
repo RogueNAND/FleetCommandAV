@@ -26,7 +26,7 @@ services:
       - PGID=1000
     network_mode: host
     volumes:
-      - ./src:/config/workspace:rw
+      - .:/config/workspace:rw
       - ./datastore/editor/config:/home/coder/.config/code-server/
       - ./datastore/editor/settings:/config/data/User/
 
@@ -36,6 +36,7 @@ services:
     restart: unless-stopped
     ports:
       - "80:8080"
+    network_mode: host
     volumes:
       - ./datastore/dashboard:/www/assets
 
@@ -45,6 +46,7 @@ services:
     restart: unless-stopped
     ports:
       - "8090:8080"
+    network_mode: host
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
