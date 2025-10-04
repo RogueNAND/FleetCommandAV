@@ -1,18 +1,63 @@
 services:
   companion:
     image: "ghcr.io/roguenand/companion:latest"
-    container_name: fcav-companion
+    container_name: companion
     restart: unless-stopped
     network_mode: host
     volumes:
-      - ~/.fcav/companion:/companion
+      - ./datastore/companion:/companion
 
   indirector:
     build: ./src
-    container_name: fcav-indirector
+    container_name: python
     restart: unless-stopped
     network_mode: host
     volumes:
       - ./src:/indirector  # mount local source for dev
     environment:
       - PYTHONUNBUFFERED=1
+
+  code-server:
+    image: linuxserver/code-server
+    container_name: editor
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+    network_mode: host
+    volumes:
+      - ./src:/config/workspace:rw
+      - ./datastore/editor/config:/home/coder/.config/code-server/
+      - ./datastore/editor/settings:/config/data/User/
+
+  homer:
+    image: b4bz/homer:latest
+    container_name: dashboard
+    restart: unless-stopped
+    ports:
+      - "80:8080"
+    volumes:
+      - ./datastore/dashboard:/www/assets
+
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: logs
+    restart: unless-stopped
+    ports:
+      - "8090:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: vpn
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    volumes:
+      - ./datastore/tailscale:/var/lib/tailscale
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - TS_AUTHKEY=
+      - TS_STATE_DIR=/var/lib/tailscale
+      - TS_EXTRA_ARGS=--ssh

@@ -65,32 +65,65 @@ $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}") stable" | \
 }
 
 deploy() {
-  local config_dir="$HOME/.fcav/companion"
+  local config_dir="./datastore/companion"
   mkdir -p "$config_dir"
 
-  # If directory exists but isn't owned by current user, fix it
-  if [ "$(stat -c %U "$config_dir")" != "$USER" ]; then
-    msg "Fixing ownership of $config_dir -> $USER"
-    sudo chown -R "$USER":"$USER" "$config_dir"
-  fi
-
-  chmod 755 "$config_dir"
+  sudo chown -R "1000:1000" "$config_dir"
+  chmod -R 755 "$config_dir"
 
   msg "Starting services..."
 
   docker compose down --remove-orphans || true
   docker compose pull
   docker compose up -d --build
-
-  msg "Companion: http://localhost:8000"
 }
+
+check_tailscale() {
+  local container="vpn"
+  local state_dir="./datastore/tailscale"
+  mkdir -p "$state_dir"
+  sudo chown -R "1000:1000" "$state_dir"
+  chmod 700 "$state_dir"
+
+  # Wait briefly to ensure container is up
+  sleep 2
+
+  # Is container running?
+  if ! docker ps --format '{{.Names}}' | grep -q "^${container}$"; then
+    echo -e "\e[33mTailscale container not running; skipping setup.\e[0m"
+    return
+  fi
+
+  # Check if already logged in
+  if docker exec "$container" tailscale status 2>&1 | grep -q "Logged in as"; then
+#    echo -e "\e[32mTailscale already logged in.\e[0m"
+    return
+  fi
+
+  echo -e "\e[34mInitializing Tailscale...\e[0m"
+  # Run tailscale up and capture output
+  local output
+  output=$(docker exec "$container" tailscale up 2>&1 || true)
+
+  if echo "$output" | grep -q "https://login.tailscale.com"; then
+    local url
+    url=$(echo "$output" | grep -Eo 'https://login\.tailscale\.com[^ ]+')
+    echo -e "\e[33mAuthorize Tailscale for this device:\e[0m\n$url"
+  else
+    echo -e "\e[31mUnexpected output from tailscale up:\e[0m\n$output"
+  fi
+}
+
 
 # ---- Main --------------------------------------------------------------------
 msg "Run as a regular user (sudo will be used as needed)."
 msg "Updating system packages..."
 sudo apt-get update -y && sudo apt-get upgrade -y
 
+git config --global core.autocrlf input
+
 install_docker
 deploy
+check_tailscale
 
 msg "Setup complete 👍"
