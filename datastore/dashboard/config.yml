@@ -59,4 +59,4 @@ services:
         icon: "fa-solid fa-code"
         subtitle: "Debug all the things"
         tag: "open"
-        url: "http://localhost:8090"
+        url: "http://localhost:81"

@@ -21,10 +21,11 @@ services:
     image: linuxserver/code-server
     container_name: editor
     restart: unless-stopped
+    ports:
+      - "8443:8443"
     environment:
       - PUID=1000
       - PGID=1000
-    network_mode: host
     volumes:
       - .:/config/workspace:rw
       - ./datastore/editor/config:/home/coder/.config/code-server/
@@ -36,7 +37,6 @@ services:
     restart: unless-stopped
     ports:
       - "80:8080"
-    network_mode: host
     volumes:
       - ./datastore/dashboard:/www/assets
 
@@ -45,8 +45,7 @@ services:
     container_name: logs
     restart: unless-stopped
     ports:
-      - "8090:8080"
-    network_mode: host
+      - "81:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
