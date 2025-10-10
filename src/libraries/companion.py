@@ -10,12 +10,11 @@ class Companion:
         self.url = url
         self.variables = {}
 
-        # Handler types
+        # handler registries
         self._handlers = defaultdict(lambda: defaultdict(list))
         self._wildcards = defaultdict(list)
         self._regex = defaultdict(list)
-
-        self._pending = {}  # async wait-for-return
+        self._pending = {}
         self._id_counter = itertools.count(10)
         self._ws = None
 
@@ -23,30 +22,24 @@ class Companion:
     # Decorators
     # --------------------
     def on(self, connection, variable=None):
-        """
-        Register a handler for a specific connection/variable.
-        Can also accept a flat string like "vmix:input_1_remaining".
-        """
+        """Register handler for a specific connection/variable."""
         if variable is None and ":" in connection:
             connection, variable = connection.split(":", 1)
-
         def decorator(func):
             if variable:
                 self._handlers[connection][variable].append(func)
-            else:  # whole connection
+            else:
                 self._handlers[connection]["_all"].append(func)
             return func
         return decorator
 
     def on_prefix(self, connection, prefix):
-        """Register a handler for variables starting with prefix."""
         def decorator(func):
             self._wildcards[connection].append((prefix, func))
             return func
         return decorator
 
     def on_regex(self, connection, pattern):
-        """Register a handler for variables matching regex."""
         regex = re.compile(pattern)
         def decorator(func):
             self._regex[connection].append((regex, func))
@@ -56,10 +49,11 @@ class Companion:
     # --------------------
     # Public API
     # --------------------
-    async def query(self, path, params=None):
-        """Perform a one-shot query and return result."""
+    async def query(self, path, **params):
+        """Perform a one-shot query (new bridge style)."""
         if not self._ws:
             raise RuntimeError("WebSocket not connected yet")
+
         req_id = next(self._id_counter)
         fut = asyncio.get_event_loop().create_future()
         self._pending[req_id] = fut
@@ -67,34 +61,47 @@ class Companion:
         message = {
             "id": req_id,
             "method": "query",
-            "params": {"path": path} if not params else {"path": path, **params}
+            "params": {"path": path, **params},
         }
         await self._ws.send(json.dumps(message))
         return await fut
 
+    async def call(self, method, **params):
+        """Generic call for bridge-registered commands."""
+        if not self._ws:
+            raise RuntimeError("WebSocket not connected yet")
+
+        req_id = next(self._id_counter)
+        fut = asyncio.get_event_loop().create_future()
+        self._pending[req_id] = fut
+
+        message = {"id": req_id, "method": method, "params": params}
+        print(json.dumps(message, indent=2))
+        await self._ws.send(json.dumps(message))
+        return await fut
+
+    async def run_connection_action(self, connection_name, action_id, options=None):
+        return await self.call("runConnectionAction", connectionName=connection_name, actionId=action_id, options=options or {}, extras={"surfaceId": "python-direct"})
+
+    async def run_actions(self, actions, **extras):
+        """Wrapper for bridge’s registered `runActions` command."""
+        return await self.call("runMultipleActions", actions=actions, **extras)
+
     def get_variable(self, connection, var, default=None):
-        """Get cached variable value."""
         return self.variables.get(connection, {}).get(var, default)
 
     # --------------------
     # Internal Dispatch
     # --------------------
     async def _dispatch(self, connection, updates):
-        # connection-wide handlers
         for h in self._handlers[connection].get("_all", []):
             await self._maybe_await(h, updates)
-
         for var, value in updates.items():
-            # exact variable handlers
             for h in self._handlers[connection].get(var, []):
                 await self._maybe_await(h, value)
-
-            # prefix handlers
             for prefix, h in self._wildcards[connection]:
                 if var.startswith(prefix):
                     await self._maybe_await(h, (var, value))
-
-            # regex handlers
             for regex, h in self._regex[connection]:
                 if regex.match(var):
                     await self._maybe_await(h, (var, value))
@@ -112,67 +119,61 @@ class Companion:
     # Main loop
     # --------------------
     async def run(self):
-        connect_repeat = 1
+        reconnect_delay = 1
         while True:
             try:
                 async with websockets.connect(self.url) as ws:
                     self._ws = ws
-                    connect_repeat = 1
-                    print("✅ Connected to Companion")
+                    print("✅ Connected to Companion WebSocketBridge")
 
-                    # Initial query
+                    # Initial variable snapshot
                     await ws.send(json.dumps({
                         "id": 1,
-                        "method": "query",
-                        "params": {"path": "variables.values"}
-                    }))
-
-                    # Subscribe to changes
-                    await ws.send(json.dumps({
-                        "id": 2,
-                        "method": "subscription",
-                        "params": {"path": "variables.values"}
+                        "method": "query.variables",
                     }))
 
                     async for message in ws:
                         data = json.loads(message)
+                        # print("DEBUG:", data)
 
-                        # fulfill queries
+                        # pending responses
                         if "id" in data and data["id"] in self._pending:
                             fut = self._pending.pop(data["id"])
                             fut.set_result(data.get("result"))
                             continue
 
-                        # initial query response
+                        # initial variable snapshot
                         if data.get("id") == 1 and "result" in data:
                             result = data["result"]
                             if isinstance(result, dict):
                                 self.variables.update(result)
                             print(f"📥 Cached variables for {len(self.variables)} connections")
-                            for connection in self.variables:
-                                print(connection)
+                            continue
 
                         # variable change events
                         if data.get("event") == "variables_changed":
                             payload = data.get("payload", {})
-                            # update cache first in case a function needs to access the latest data
                             for conn, updates in payload.items():
-                                conn_vars = self.variables.setdefault(conn, {})
-                                conn_vars.update(updates)
-                            # dispatch
-                            for conn, updates in payload.items():
+                                self.variables.setdefault(conn, {}).update(updates)
                                 await self._dispatch(conn, updates)
 
+                        # button events
+                        elif data.get("event") == "updateButtonState":
+                            payload = data.get("payload", {})
+                            print(f"🎛 Button update: {payload}")
+
+                        # other events (future expansion)
+                        else:
+                            print("🔔 Event:", data.get("event"), data.get("payload"))
+
             except (OSError, websockets.exceptions.ConnectionClosedError) as e:
-                print(f"⚠️ Connection error: {e}")
-                print(f"🔄 Reconnecting ({connect_repeat})...")
-                await asyncio.sleep(min(connect_repeat, 5))
+                print(f"⚠️ Connection lost: {e}")
+                await asyncio.sleep(min(reconnect_delay, 5))
+                reconnect_delay = min(reconnect_delay + 1, 10)
             except Exception as e:
                 print(f"❌ Unexpected error: {e}")
-                print(f"🔄 Reconnecting ({connect_repeat})...")
-                await asyncio.sleep(min(connect_repeat, 5))
+                await asyncio.sleep(min(reconnect_delay, 5))
             finally:
                 if self._ws:
-                    await self._ws.close()  # force close
+                    await self._ws.close()
                 self._ws = None
-                connect_repeat += 1
