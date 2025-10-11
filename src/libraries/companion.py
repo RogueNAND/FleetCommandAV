@@ -11,9 +11,8 @@ class Companion:
         self.variables = {}
 
         # handler registries
-        self._handlers = defaultdict(lambda: defaultdict(list))
-        self._wildcards = defaultdict(list)
-        self._regex = defaultdict(list)
+        self._var_change_handlers = defaultdict(list)  # (connection, type, key) -> list[handlers]
+        self._button_handlers = defaultdict(list)      # (page, x, y, type) -> list[handlers]
 
         # requests and communication
         self._pending = {}
@@ -25,28 +24,49 @@ class Companion:
         self._sender_task = None
         self._receiver_task = None
 
+
     # ----------------------------------------------------------------------
     # Decorators
     # ----------------------------------------------------------------------
-    def on(self, connection, variable=None):
-        """Register handler for a specific connection/variable."""
-        if variable is None and ":" in connection:
-            connection, variable = connection.split(":", 1)
-        def decorator(func):
-            self._handlers[connection][variable or "_all"].append(func)
-            return func
-        return decorator
+    def on_change(self, connection, *, variable=None, prefix=None, suffix=None, regex=None):
+        options = [variable, prefix, suffix, regex]
+        if sum(1 for o in options if o is not None) != 1:
+            raise ValueError("on_change requires exactly one of: variable, prefix, suffix, regex")
 
-    def on_prefix(self, connection, prefix):
         def decorator(func):
-            self._wildcards[connection].append((prefix, func))
+            if variable:
+                self._var_change_handlers[(connection, "variable", variable)].append(func)
+            elif prefix:
+                self._var_change_handlers[(connection, "prefix", prefix)].append(func)
+            elif suffix:
+                self._var_change_handlers[(connection, "suffix", suffix)].append(func)
+            elif regex:
+                compiled = re.compile(regex)
+                self._var_change_handlers[(connection, "regex", compiled)].append(func)
             return func
-        return decorator
 
-    def on_regex(self, connection, pattern):
+        return decorator
         regex = re.compile(pattern)
         def decorator(func):
             self._regex[connection].append((regex, func))
+            return func
+        return decorator
+
+    def on_button_down(self, page, x, y):
+        def decorator(func):
+            self._button_handlers[(page, x, y, "down")].append(func)
+            return func
+        return decorator
+
+    def on_button_up(self, page, x, y):
+        def decorator(func):
+            self._button_handlers[(page, x, y, "up")].append(func)
+            return func
+        return decorator
+
+    def on_rotate(self, page, x, y):
+        def decorator(func):
+            self._button_handlers[(page, x, y, "rotate")].append(func)
             return func
         return decorator
 
@@ -91,24 +111,25 @@ class Companion:
     # ----------------------------------------------------------------------
     # Internal Dispatch
     # ----------------------------------------------------------------------
-    async def _dispatch(self, connection, updates):
-        """Schedule handlers as background tasks."""
-        # _all handlers
-        for h in self._handlers[connection].get("_all", []):
-            asyncio.create_task(self._safe_handler_call(h, updates))
 
+    async def _dispatch(self, connection, updates):
         for var, value in updates.items():
-            # exact match
-            for h in self._handlers[connection].get(var, []):
-                asyncio.create_task(self._safe_handler_call(h, value))
-            # prefix match
-            for prefix, h in self._wildcards[connection]:
-                if var.startswith(prefix):
-                    asyncio.create_task(self._safe_handler_call(h, (var, value)))
-            # regex match
-            for regex, h in self._regex[connection]:
-                if regex.match(var):
-                    asyncio.create_task(self._safe_handler_call(h, (var, value)))
+            for (conn, match_type, key), handlers in self._var_change_handlers.items():
+                if conn != connection:
+                    continue
+                matched = False
+                if match_type == "variable" and var == key:
+                    matched = True
+                elif match_type == "prefix" and var.startswith(key):
+                    matched = True
+                elif match_type == "suffix" and var.endswith(key):
+                    matched = True
+                elif match_type == "regex" and key.match(var):
+                    matched = True
+
+                if matched:
+                    for h in handlers:
+                        asyncio.create_task(self._safe_handler_call(h, (var, value)))
 
     async def _safe_handler_call(self, handler, arg):
         """Run handler safely in its own task."""
@@ -166,6 +187,26 @@ class Companion:
             # button events
             elif data.get("event") == "updateButtonState":
                 print(f"🎛 Button update: {data.get('payload')}")
+            
+            # interaction events
+            elif data.get("event") == "interaction":
+                payload = data.get("payload", {})
+                page = payload.get("page")
+                x = payload.get("x")
+                y = payload.get("y")
+                event_type = payload.get("event")
+                value = payload.get("value")
+
+                if event_type == "press":
+                    type_key = "down" if value else "up"
+                elif event_type == "rotate":
+                    type_key = "rotate"
+                else:
+                    type_key = None
+
+                if type_key:
+                    for h in self._button_handlers.get((page, x, y, type_key), []):
+                        asyncio.create_task(self._safe_handler_call(h, payload))
 
             # unknown
             else:
