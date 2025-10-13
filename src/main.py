@@ -1,17 +1,21 @@
 import asyncio
-from libraries import Companion
+import importlib
+import pkgutil
+import automations
+from libraries import companion
 
-companion = Companion()
-
-@companion.on_change("vmix", variable="input_1_loop")
-async def input_remaining(value):
-    await companion.run_connection_action("vmix", "videoActions", {"input": "1", "functionID": "PlayPause"})
-
-@companion.on_button_down(page=1, x=0, y=0)
-async def test(value):
-    await companion.run_connection_action("vmix", "videoActions", {"input": "1", "functionID": "PlayPause"})
+def load_automations():
+    # Dynamically import all modules in the `automations` package.
+    for module_info in pkgutil.iter_modules(automations.__path__):
+        module_name = f"{automations.__name__}.{module_info.name}"
+        try:
+            importlib.import_module(module_name)
+            print(f"📦 Loaded automation: {module_name}")
+        except Exception as e:
+            print(f"❌ Failed to load {module_name}: {e}")
 
 async def main():
+    load_automations()
     await companion.run()
 
 if __name__ == "__main__":

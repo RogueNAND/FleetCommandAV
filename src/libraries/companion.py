@@ -1,8 +1,9 @@
 import asyncio
-import websockets
-import json
 import itertools
+import json
+from pathlib import Path
 import re
+import websockets
 from collections import defaultdict
 
 class Companion:
@@ -13,6 +14,7 @@ class Companion:
         # handler registries
         self._var_change_handlers = defaultdict(list)  # (connection, type, key) -> list[handlers]
         self._button_handlers = defaultdict(list)      # (page, x, y, type) -> list[handlers]
+        self._snippet_regen_task = None
 
         # requests and communication
         self._pending = {}
@@ -24,10 +26,10 @@ class Companion:
         self._sender_task = None
         self._receiver_task = None
 
-
     # ----------------------------------------------------------------------
     # Decorators
     # ----------------------------------------------------------------------
+
     def on_change(self, connection, *, variable=None, prefix=None, suffix=None, regex=None):
         options = [variable, prefix, suffix, regex]
         if sum(1 for o in options if o is not None) != 1:
@@ -73,6 +75,7 @@ class Companion:
     # ----------------------------------------------------------------------
     # Public API
     # ----------------------------------------------------------------------
+
     async def query(self, path, **params):
         return await self.call("query", path=path, **params)
 
@@ -144,6 +147,7 @@ class Companion:
     # ----------------------------------------------------------------------
     # Communication Loops
     # ----------------------------------------------------------------------
+
     async def _send_loop(self):
         while self._ws:
             msg = await self._send_queue.get()
@@ -174,15 +178,26 @@ class Companion:
                 result = data["result"]
                 if isinstance(result, dict):
                     self.variables.update(result)
+                    self.generate_snippets()
                 print(f"📥 Cached variables for {len(self.variables)} connections")
                 continue
 
             # variable change
             if data.get("event") == "variables_changed":
                 payload = data.get("payload", {})
-                for conn, updates in payload.items():
-                    self.variables.setdefault(conn, {}).update(updates)
-                    await self._dispatch(conn, updates)
+                variables_created = False
+                for connection, updates in payload.items():
+                    # check if any new keys were added, for generating snippets
+                    existing_vars = self.variables.setdefault(connection, {})
+                    variables_created = bool(set(updates.keys()) - set(existing_vars.keys()))
+
+                    # update internal variable states
+                    self.variables.setdefault(connection, {}).update(updates)
+                    await self._dispatch(connection, updates)
+
+                if variables_created:
+                    print("📝 Detected new variables — regenerating snippets")
+                    self.generate_snippets()
 
             # button events
             elif data.get("event") == "updateButtonState":
@@ -213,8 +228,68 @@ class Companion:
                 print("🔔 Event:", data.get("event"), data.get("payload"))
 
     # ----------------------------------------------------------------------
+    # Code Snippets
+    # ----------------------------------------------------------------------
+
+    def generate_snippets(self, delay=2.0):
+        if self._snippet_regen_task and not self._snippet_regen_task.done():
+            return
+
+        async def regen():
+            await asyncio.sleep(delay)
+            await self._generate_snippets()
+
+        self._snippet_regen_task = asyncio.create_task(regen())
+
+    async def _generate_snippets(self):
+        vars = {
+            connection: list(vars_dict.keys())
+            for connection, vars_dict in self.variables.items()
+            if vars_dict
+        }
+
+        snippets = {}
+
+        # Add variable update handler snippets
+        for connection, variables in vars.items():
+            joined_vars = ",".join(variables)
+            snippets[f"on_change_{connection}"] = {
+                "prefix": f"@companion.on_change_{connection}",
+                "body": [
+                    f"@companion.on_change(\"{connection}\", variable=\"${{1|{joined_vars}|}}\")\n"
+                    f"def ${{4:handler_name}}(payload):\n"
+                    f"    ${{5:pass # TODO: handle change}}"
+                ],
+                "description": f"on_change decorator with autocomplete for {connection}"
+            }
+
+        # Add button handler snippets
+        for event in ("button_down", "button_up", "rotate"):
+            prefix_base = f"on_{event}"
+            snippets[prefix_base] = {
+                "prefix": f"@companion.{prefix_base}",
+                "body": [
+                    f"@companion.{prefix_base}(page=\"${{1:page_name}}\", x=${{2:0}}, y=${{3:0}})\n"
+                    f"def ${{4:handler_name}}(payload):\n"
+                    f"    ${{5:pass # handle button {event}}}"
+                ],
+                "description": f"{prefix_base} decorator"
+            }
+
+        SNIPPET_PATH = Path("/indirector/snippets/python.json")
+        SNIPPET_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+        def write_file():
+            with SNIPPET_PATH.open("w") as f:
+                json.dump(snippets, f, indent=2)
+            print("📝 Snippets updated")
+
+        await asyncio.to_thread(write_file)
+
+    # ----------------------------------------------------------------------
     # Main entry
     # ----------------------------------------------------------------------
+
     async def run(self):
         reconnect_delay = 1
         while True:

@@ -44,19 +44,27 @@ colors:
     link-hover: "#ffdd57"
 
 services:
-  - items:
+  - name: "Operations"
+    icon: "fa-solid fa-user-tie"
+    items:
+  - name: "Engineering"
+    icon: "fa-solid fa-server"
+    items:
       - name: "Companion"
         icon: "fa-solid fa-gamepad"
-        subtitle: "Connect everything"
+        subtitle: "Control everything"
         tag: "open"
         url: "http://localhost:8000"
+  - name: "Development"
+    icon: "fa-solid fa-microchip"
+    items:
       - name: "Code Editor"
         icon: "fa-solid fa-code"
         subtitle: "Build advanced automations"
         tag: "open"
         url: "http://localhost:8443"
       - name: "Log Viewer"
-        icon: "fa-solid fa-code"
-        subtitle: "Debug all the things"
+        icon: "fa-solid fa-magnifying-glass"
+        subtitle: "Debugging"
         tag: "open"
         url: "http://localhost:81"

@@ -7,13 +7,14 @@ services:
     volumes:
       - ./datastore/companion:/companion
 
-  indirector:
+  python:
     build: ./src
     container_name: python
     restart: unless-stopped
     network_mode: host
     volumes:
-      - ./src:/indirector  # mount local source for dev
+      - ./src:/indirector
+      - ./datastore/editor/settings/snippets:/indirector/snippets
     environment:
       - PYTHONUNBUFFERED=1
 
@@ -30,6 +31,7 @@ services:
       - .:/config/workspace:rw
       - ./datastore/editor/config:/home/coder/.config/code-server/
       - ./datastore/editor/settings:/config/data/User/
+      - ./datastore/editor/settings/snippets:/config/data/User/snippets
 
   homer:
     image: b4bz/homer:latest
@@ -42,7 +44,7 @@ services:
 
   dozzle:
     image: amir20/dozzle:latest
-    container_name: logs
+    container_name: log-viewer
     restart: unless-stopped
     ports:
       - "81:8080"
