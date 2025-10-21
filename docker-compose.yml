@@ -1,4 +1,31 @@
 services:
+
+  traefik:
+    image: traefik:v3.1
+    container_name: traefik
+    restart: unless-stopped
+    networks:
+      - proxy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8080:8080"
+      - "8443:8443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.codeserver.address=:8443"
+      # - "--api.dashboard=true"
+      # - "--api.insecure=true" # only on trusted LAN
+
+      # Optional: redirect HTTP -> HTTPS later
+      # - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      # - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+
   companion:
     image: "ghcr.io/roguenand/companion:latest"
     container_name: companion
@@ -6,6 +33,31 @@ services:
     network_mode: host
     volumes:
       - ./datastore/companion:/companion
+
+  ontime:
+    image: getontime/ontime:latest
+    container_name: ontime
+    restart: unless-stopped
+    ports:
+      - "4001:4001/tcp"
+      - "8888:8888/udp"
+      - "9999:9999/udp"
+    volumes:
+      - "./datastore/ontime:/data/"
+    environment:
+      - TZ=US/Eastern
+
+  homeassistant:
+    container_name: homeassistant
+    image: "ghcr.io/home-assistant/home-assistant:stable"
+    ports:
+      - "8123:8123"
+    volumes:
+      - ./datastore/homeassistant:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
+    restart: unless-stopped
+    privileged: true
 
   python:
     build: ./src
@@ -22,34 +74,65 @@ services:
     image: linuxserver/code-server
     container_name: editor
     restart: unless-stopped
-    ports:
-      - "8443:8443"
+    networks:
+      - proxy
     environment:
       - PUID=1000
       - PGID=1000
     volumes:
       - .:/config/workspace:rw
-      - ./datastore/editor/config:/home/coder/.config/code-server/
       - ./datastore/editor/settings:/config/data/User/
       - ./datastore/editor/settings/snippets:/config/data/User/snippets
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.codeserver.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.codeserver.entrypoints=codeserver"
+      - "traefik.http.routers.codeserver.priority=10"
+      - "traefik.http.routers.codeserver.middlewares=simple-auth"
+      - "traefik.http.services.codeserver.loadbalancer.server.port=8443"
+      - "traefik.http.middlewares.simple-auth.basicauth.users=${ADMIN_USER}:${ADMIN_PASS}"
 
   homer:
     image: b4bz/homer:latest
     container_name: dashboard
     restart: unless-stopped
-    ports:
-      - "80:8080"
+    networks:
+      - proxy
     volumes:
       - ./datastore/dashboard:/www/assets
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.homer.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.homer.entrypoints=web"
+      - "traefik.http.routers.homer.priority=1"
+      - "traefik.http.services.homer.loadbalancer.server.port=8080"
 
   dozzle:
     image: amir20/dozzle:latest
     container_name: log-viewer
     restart: unless-stopped
-    ports:
-      - "81:8080"
+    networks:
+      - proxy
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      DOZZLE_BASE: /logs
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dozzle.rule=PathPrefix(`/logs`)"
+      - "traefik.http.routers.dozzle.entrypoints=web"
+      - "traefik.http.routers.dozzle.priority=10"
+      - "traefik.http.services.dozzle.loadbalancer.server.port=8080"
+      - "traefik.http.routers.dozzle.middlewares=simple-auth"
+      - "traefik.http.middlewares.simple-auth.basicauth.users=${ADMIN_USER}:${ADMIN_PASS}"
+
+  contentshare:
+    image: tanq16/local-content-share:main
+    container_name: local-content-share
+    ports:
+      - "8090:8080"
+    volumes:
+      - ./datastore/contentshare:/app/data
 
   tailscale:
     image: tailscale/tailscale:latest
@@ -64,3 +147,7 @@ services:
       - TS_AUTHKEY=
       - TS_STATE_DIR=/var/lib/tailscale
       - TS_EXTRA_ARGS=--ssh
+
+networks:
+  proxy:
+    external: false

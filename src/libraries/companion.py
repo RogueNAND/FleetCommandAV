@@ -76,10 +76,10 @@ class Companion:
     # Public API
     # ----------------------------------------------------------------------
 
-    async def query(self, path, **params):
-        return await self.call("query", path=path, **params)
+    async def _query(self, path, **params):
+        return await self._call("query", path=path, **params)
 
-    async def call(self, method, **params):
+    async def _call(self, method, **params):
         if not self._ws:
             raise RuntimeError("WebSocket not connected yet")
 
@@ -96,8 +96,8 @@ class Companion:
             self._pending.pop(req_id, None)
             raise RuntimeError(f"Timeout waiting for response to '{method}'")
 
-    async def run_connection_action(self, connection_name, action_id, options=None):
-        return await self.call(
+    async def action(self, connection_name, action_id, options=None):
+        return await self._call(
             "runConnectionAction",
             connectionName=connection_name,
             actionId=action_id,
@@ -105,10 +105,7 @@ class Companion:
             extras={"surfaceId": "python-direct"}
         )
 
-    async def run_actions(self, actions, **extras):
-        return await self.call("runMultipleActions", actions=actions, **extras)
-
-    def get_variable(self, connection, var, default=None):
+    def var(self, connection, var, default=None):
         return self.variables.get(connection, {}).get(var, default)
 
     # ----------------------------------------------------------------------
@@ -202,7 +199,7 @@ class Companion:
             # button events
             elif data.get("event") == "updateButtonState":
                 print(f"🎛 Button update: {data.get('payload')}")
-            
+
             # interaction events
             elif data.get("event") == "interaction":
                 payload = data.get("payload", {})
@@ -242,6 +239,20 @@ class Companion:
         self._snippet_regen_task = asyncio.create_task(regen())
 
     async def _generate_snippets(self):
+
+        snippets = await self._generate_variable_snippets() | await self._generate_action_snippets(await self._call("queryActions"))
+
+        SNIPPET_PATH = Path("/indirector/snippets/python.json")
+        SNIPPET_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+        def write_file():
+            with SNIPPET_PATH.open("w") as f:
+                json.dump(snippets, f, indent=2)
+            print(f"🧩 Action snippets updated ({len(snippets)} total)")
+
+        await asyncio.to_thread(write_file)
+
+    async def _generate_variable_snippets(self):
         vars = {
             connection: list(vars_dict.keys())
             for connection, vars_dict in self.variables.items()
@@ -253,14 +264,21 @@ class Companion:
         # Add variable update handler snippets
         for connection, variables in vars.items():
             joined_vars = ",".join(variables)
-            snippets[f"on_change_{connection}"] = {
+            snippets[f"companion_on_change_{connection}"] = {
                 "prefix": f"@companion.on_change_{connection}",
                 "body": [
                     f"@companion.on_change(\"{connection}\", variable=\"${{1|{joined_vars}|}}\")\n"
-                    f"def ${{4:handler_name}}(payload):\n"
+                    f"async def ${{4:handler_name}}(payload):\n"
                     f"    ${{5:pass # TODO: handle change}}"
                 ],
                 "description": f"on_change decorator with autocomplete for {connection}"
+            }
+            snippets[f"companion_var_{connection}"] = {
+                "prefix": f"companion.var_{connection}",
+                "body": [
+                    f"companion.var(\"{connection}\", var=\"${{1|{joined_vars}|}}\", default={{2:None}})"
+                ],
+                "description": f"variable reference with autocomplete for {connection}"
             }
 
         # Add button handler snippets
@@ -270,21 +288,66 @@ class Companion:
                 "prefix": f"@companion.{prefix_base}",
                 "body": [
                     f"@companion.{prefix_base}(page=\"${{1:page_name}}\", x=${{2:0}}, y=${{3:0}})\n"
-                    f"def ${{4:handler_name}}(payload):\n"
+                    f"async def ${{4:handler_name}}(payload):\n"
                     f"    ${{5:pass # handle button {event}}}"
                 ],
                 "description": f"{prefix_base} decorator"
             }
 
-        SNIPPET_PATH = Path("/indirector/snippets/python.json")
-        SNIPPET_PATH.parent.mkdir(parents=True, exist_ok=True)
+        return  snippets
 
-        def write_file():
-            with SNIPPET_PATH.open("w") as f:
-                json.dump(snippets, f, indent=2)
-            print("📝 Snippets updated")
+    async def _generate_action_snippets(self, actions_json: dict):
+        """
+        Generate VSCode snippets for all available Companion actions.
+        Each snippet lets you call: companion.action("<connection>", "<action>", options={...})
+        """
 
-        await asyncio.to_thread(write_file)
+        snippets = {}
+
+        for connection, actions in actions_json.items():
+            for action_id, action_def in actions.items():
+                label = action_def.get("label", action_id)
+                desc = action_def.get("description", "")
+                options = action_def.get("options", [])
+
+                # Build the options object body for the snippet
+                option_lines = []
+                tab_index = 1
+                for opt in options:
+                    opt_id = opt.get("id")
+                    opt_type = opt.get("type", "textinput")
+                    default = opt.get("default", "")
+                    choices = opt.get("choices", [])
+
+                    # Convert dropdowns to VSCode choice lists
+                    if opt_type == "dropdown" and choices:
+                        choice_str = ",".join(str(c["id"]).replace('true', 'True').replace('false', 'False') for c in choices)
+                        line = f'"{opt_id}": "${{{tab_index}|{choice_str}|}}"'
+                    elif opt_type == "checkbox":
+                        line = f'"{opt_id}": ${{{tab_index}:False}}'
+                    elif opt_type == "number":
+                        line = f'"{opt_id}": ${{{tab_index}:{default if default != "" else 0}}}'
+                    else:  # textinput or anything else
+                        default_val = json.dumps(default)[1:-1]  # escape quotes safely
+                        line = f'"{opt_id}": "${{{tab_index}:{default_val}}}"'
+
+                    option_lines.append(line)
+                    tab_index += 1
+
+                options_block = ", ".join(option_lines) if option_lines else ""
+                snippet_body = (
+                    f'# {desc}\nawait companion.action("{connection}", "{action_id}", options={{\n    {options_block}\n}})'
+                )
+
+                snippets[f"{connection}.{action_id}"] = {
+                    "prefix": [
+                        f"companion.action_{connection} | {desc}",
+                    ],
+                    "body": [snippet_body],
+                    "description": desc,
+                }
+
+        return snippets
 
     # ----------------------------------------------------------------------
     # Main entry
@@ -304,7 +367,7 @@ class Companion:
                     # initial variable snapshot
                     await self._send_queue.put({
                         "id": 1,
-                        "method": "query.variables"
+                        "method": "queryVariables"
                     })
 
                     await asyncio.gather(self._sender_task, self._receiver_task)

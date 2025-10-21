@@ -1,7 +1,6 @@
 {
     "workbench.colorTheme": "Default Dark+",
     "editor.mouseWheelZoom": true,
-
     "editor.formatOnPaste": true,
     "editor.autoIndentOnPaste": true,
     "editor.formatOnSave": true,
@@ -10,7 +9,6 @@
     "editor.trimAutoWhitespace": true,
     "files.trimTrailingWhitespace": true,
     "files.insertFinalNewline": true,
-
     "editor.quickSuggestions": {
         "other": true,
         "comments": false,
@@ -21,13 +19,11 @@
     "editor.suggest.showWords": true,
     "editor.acceptSuggestionOnEnter": "on",
     "editor.suggestSelection": "first",
-
     "python.analysis.autoImportCompletions": true,
     "python.analysis.diagnosticMode": "workspace",
     "python.analysis.typeCheckingMode": "basic",
     "python.linting.enabled": true,
     "python.linting.pylintEnabled": true,
-
     "editor.minimap.enabled": false,
     "editor.cursorBlinking": "phase",
     "files.associations": {
@@ -35,4 +31,5 @@
     },
     "diffEditor.ignoreTrimWhitespace": true,
     "editor.accessibilitySupport": "off",
+    "files.autoSave": "off"
 }

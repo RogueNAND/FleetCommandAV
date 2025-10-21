@@ -1,52 +1,61 @@
 ---
-# Homepage configuration
 # See https://fontawesome.com/search for icons options
 
-title: "Broadcasting"
-subtitle: "FleetCommand AV"
+title: "FleetCommand AV"
+subtitle: "Show Tools"
 logo: "logo.png"
-# icon: "fas fa-skull-crossbones" # Optional icon
+# icon: "fas fa-___"
 
 header: true
-footer: '<p><a href="https://github.com/RogueNAND/FleetCommandAV">Source Code</a></p>' # set false if you want to hide it.
+footer: '<p><a href="https://github.com/RogueNAND/FleetCommandAV">Source Code</a></p>'
 
-# Optional theme customization
 theme: default
+stylesheet:
+  - "assets/custom.css"
 
-# Optional theme customization (color overrrides)
-# overrrides can also be done using CSS vars 
 colors:
   light:
-    highlight-primary: "#3367d6"
-    highlight-secondary: "#4285f4"
-    highlight-hover: "#5a95f5"
-    background: "#f5f5f5"
+    highlight-primary: "#a0a0a0"      # muted silver
+    highlight-secondary: "#c1c1c1"    # lighter silver
+    highlight-hover: "#e53935"        # subtle red accent
+    background: "#f0f0f0"
     card-background: "#ffffff"
-    text: "#363636"
+    text: "#202020"
     text-header: "#ffffff"
     text-title: "#303030"
     text-subtitle: "#424242"
     card-shadow: rgba(0, 0, 0, 0.1)
-    link: "#3273dc"
-    link-hover: "#363636"
+    link: "#a0a0a0"
+    link-hover: "#e53935"
+
   dark:
-    highlight-primary: "#3367d6"
-    highlight-secondary: "#4285f4"
-    highlight-hover: "#5a95f5"
-    background: "#131313"
-    card-background: "#2b2b2b"
-    text: "#eaeaea"
+    highlight-primary: "#606060"      # silver accent
+    highlight-secondary: "#333333"    # darker silver
+    highlight-hover: "#d32f2f"        # red hover
+    background: "#0f0f0f"            # near-black background
+    card-background: "#222222"       # dark gray cards
+    text: "#e0e0e0"
     text-header: "#ffffff"
     text-title: "#fafafa"
-    text-subtitle: "#f5f5f5"
-    card-shadow: rgba(0, 0, 0, 0.4)
-    link: "#3273dc"
-    link-hover: "#ffdd57"
+    text-subtitle: "#cccccc"
+    card-shadow: rgba(0, 0, 0, 0.6)
+    link: "#b0b0b0"
+    link-hover: "#d32f2f"
 
 services:
   - name: "Operations"
     icon: "fa-solid fa-user-tie"
     items:
+      - name: "OnTime"
+        icon: "fa-solid fa-clock"
+        subtitle: "Event Rundown"
+        tag: "open"
+        url: "javascript:void(window.open(`//${location.hostname}:4001/`))"
+      - name: "File Share"
+        icon: "fa-solid fa-clipboard"
+        subtitle: "Copy files between machines"
+        tag: "open"
+        url: "javascript:void(window.open(`//${location.hostname}:8090/`))"
   - name: "Engineering"
     icon: "fa-solid fa-server"
     items:
@@ -54,7 +63,12 @@ services:
         icon: "fa-solid fa-gamepad"
         subtitle: "Control everything"
         tag: "open"
-        url: "http://localhost:8000"
+        url: "javascript:void(window.open(`//${location.hostname}:8000/`))"
+      - name: "HomeAssistant"
+        icon: "fa-solid fa-house"
+        subtitle: "Connect IOT"
+        tag: "open"
+        url: "javascript:void(window.open(`//${location.hostname}:8123/`))"
   - name: "Development"
     icon: "fa-solid fa-microchip"
     items:
@@ -62,9 +76,9 @@ services:
         icon: "fa-solid fa-code"
         subtitle: "Build advanced automations"
         tag: "open"
-        url: "http://localhost:8443"
+        url: "javascript:void(window.open(`//${location.hostname}:8443/`))"
       - name: "Log Viewer"
         icon: "fa-solid fa-magnifying-glass"
         subtitle: "Debugging"
         tag: "open"
-        url: "http://localhost:81"
+        url: "javascript:void(window.open(`//${location.hostname}/logs`))"
