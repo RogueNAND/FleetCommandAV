@@ -4,8 +4,6 @@ services:
     image: traefik:v3.1
     container_name: traefik
     restart: unless-stopped
-    networks:
-      - proxy
     ports:
       - "80:80"
       - "443:443"
@@ -74,8 +72,6 @@ services:
     image: linuxserver/code-server
     container_name: editor
     restart: unless-stopped
-    networks:
-      - proxy
     environment:
       - PUID=1000
       - PGID=1000
@@ -96,8 +92,6 @@ services:
     image: b4bz/homer:latest
     container_name: dashboard
     restart: unless-stopped
-    networks:
-      - proxy
     volumes:
       - ./datastore/dashboard:/www/assets
     labels:
@@ -111,8 +105,6 @@ services:
     image: amir20/dozzle:latest
     container_name: log-viewer
     restart: unless-stopped
-    networks:
-      - proxy
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     environment:
@@ -147,7 +139,3 @@ services:
       - TS_AUTHKEY=
       - TS_STATE_DIR=/var/lib/tailscale
       - TS_EXTRA_ARGS=--ssh
-
-networks:
-  proxy:
-    external: false

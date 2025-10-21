@@ -72,6 +72,18 @@ class Companion:
             return func
         return decorator
 
+    async def action(self, connection, action_id, options=None):
+        return await self._call(
+            "runConnectionAction",
+            connectionName=connection,
+            actionId=action_id,
+            options=options or {},
+            extras={"surfaceId": "python-direct"}
+        )
+
+    def var(self, connection, var, default=None):
+        return self.variables.get(connection, {}).get(var, default)
+
     # ----------------------------------------------------------------------
     # Public API
     # ----------------------------------------------------------------------
@@ -95,18 +107,6 @@ class Companion:
         except asyncio.TimeoutError:
             self._pending.pop(req_id, None)
             raise RuntimeError(f"Timeout waiting for response to '{method}'")
-
-    async def action(self, connection_name, action_id, options=None):
-        return await self._call(
-            "runConnectionAction",
-            connectionName=connection_name,
-            actionId=action_id,
-            options=options or {},
-            extras={"surfaceId": "python-direct"}
-        )
-
-    def var(self, connection, var, default=None):
-        return self.variables.get(connection, {}).get(var, default)
 
     # ----------------------------------------------------------------------
     # Internal Dispatch

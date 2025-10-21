@@ -1,7 +1,11 @@
 from . import companion
 
-#  @companion.onchange()
-#  @companion.on_button_down()
-#  @companion.on_button_up()
-#  @companion.on_rotate(page="page_name", x=0, y=0)
+#  @companion.onchange(connection, variable)
+#  @companion.onchange(connection, prefix)
+#  @companion.onchange(connection, suffix)
+#  @companion.onchange(connection, regex)
+#  @companion.on_button_down(page, x, y)
+#  @companion.on_button_up(page, x, y)
+#  @companion.on_rotate(page, x, y)
 #  companion.action()
+#  companion.var()
