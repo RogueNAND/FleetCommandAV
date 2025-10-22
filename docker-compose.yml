@@ -76,7 +76,7 @@ services:
       - PUID=1000
       - PGID=1000
     volumes:
-      - .:/config/workspace:rw
+      - ./src/automations:/config/workspace:rw
       - ./datastore/editor/settings:/config/data/User/
       - ./datastore/editor/settings/snippets:/config/data/User/snippets
     labels:

@@ -248,7 +248,7 @@ class Companion:
         def write_file():
             with SNIPPET_PATH.open("w") as f:
                 json.dump(snippets, f, indent=2)
-            print(f"🧩 Action snippets updated ({len(snippets)} total)")
+            print(f"🧩 Snippets updated ({len(snippets)} total)")
 
         await asyncio.to_thread(write_file)
 
@@ -276,7 +276,7 @@ class Companion:
             snippets[f"companion_var_{connection}"] = {
                 "prefix": f"companion.var_{connection}",
                 "body": [
-                    f"companion.var(\"{connection}\", var=\"${{1|{joined_vars}|}}\", default={{2:None}})"
+                    f"companion.var(\"{connection}\", var=\"${{1|{joined_vars}|}}\", default=${{2:None}})"
                 ],
                 "description": f"variable reference with autocomplete for {connection}"
             }
